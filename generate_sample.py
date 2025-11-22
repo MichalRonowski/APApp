@@ -2,7 +2,15 @@ from __future__ import annotations
 import os
 from typing import List, Dict, Any
 
-from src.report import load_config, load_csv, filter_by_sources, ReportBuilder, CSV_COLUMNS
+from src.report import (
+    load_config,
+    load_csv,
+    filter_by_sources,
+    ReportBuilder,
+    CSV_COLUMNS,
+    load_uom_lookup,
+    apply_uom_lookup,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_CSV = os.path.join(BASE_DIR, 'ex_input.csv')
@@ -18,6 +26,9 @@ if __name__ == '__main__':
 
     cfg = load_config(CONFIG_JSON)
     df = load_csv(INPUT_CSV)
+    # Apply unit mapping from output/Jednostki.csv if present
+    uom_lookup_path = os.path.join(OUTPUT_DIR, 'Jednostki.csv')
+    df = apply_uom_lookup(df, load_uom_lookup(uom_lookup_path))
     df_s = filter_by_sources(df, [args.source])
     reporter = ReportBuilder(cfg)
     os.makedirs(OUTPUT_DIR, exist_ok=True)

@@ -1,10 +1,18 @@
 {% extends 'base.html' %}
 {% block content %}
+  <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+    <a href="{{ url_for('define_base_customers') }}" style="text-decoration: none; padding: 0.75rem 1.5rem; border: 2px solid #007bff; border-radius: 4px; background: #007bff; color: white; font-weight: bold; display: inline-block;">Definiuj bazowych klientów</a>
+  </div>
+  <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" style="margin-bottom: 1.5rem;">
+    <input type="file" name="input_file" accept=".xlsx,.xls,.csv" required>
+    <button type="submit">Wgraj .xlsx/.csv</button>
+    <p style="font-size: 0.9em; color: #555; margin: 0.5rem 0 0;">Możesz wgrać dowolną nazwę pliku. Plik .xlsx zostanie automatycznie przekonwertowany do CSV.</p>
+  </form>
   <form method="post" class="card">
-    <h2>Krok 1: Wybierz "Nr źródła"</h2>
+    <h2>Krok 2. Wybrani klienci</h2>
     <p>Na podstawie wybranych źródeł wygenerujemy raporty PDF <b>per Nr dokumentu</b>.</p>
     <div class="toolbar">
-      <input id="filter" type="text" placeholder="Filtruj listę (np. N3222)">
+      <input id="filter" type="text" placeholder="Filtruj listę (np. Stacja Paliw)">
       <div class="actions minor">
         <button type="button" id="selectAll" class="secondary">Zaznacz wszystkie</button>
         <button type="button" id="clearAll" class="secondary">Wyczyść</button>
@@ -14,7 +22,7 @@
       {% for s in sources %}
         <label class="check item">
           <input type="checkbox" name="sources" value="{{ s }}">
-          <span>{{ s }}</span>
+          <span>{{ source_names.get(s, s) }}</span>
         </label>
       {% endfor %}
     </div>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import sys
 import math
 import json
 from dataclasses import dataclass
@@ -11,7 +12,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
@@ -41,6 +42,33 @@ UOM_ALIASES = [
     "Jednostka sprzedaży",
     "Unit of Measure",
 ]
+
+
+def _normalize_uom(s: Any) -> str:
+    """Normalize unit strings to consistent uppercase short codes used in the PDF.
+    Examples: KG, SZT, L, G, ML. Fallback to original trimmed uppercased value.
+    """
+    if s is None:
+        return ""
+    val = str(s).strip().upper()
+    mapping = {
+        "KG": "KG",
+        "KILOGRAM": "KG",
+        "KILOGRAMY": "KG",
+        "SZT": "SZT",
+        "SZTUKA": "SZT",
+        "SZTUKI": "SZT",
+        "L": "L",
+        "LITR": "L",
+        "LITRY": "L",
+        "G": "G",
+        "GRAM": "G",
+        "GRAMY": "G",
+        "ML": "ML",
+        "MILILITR": "ML",
+        "MILILITRY": "ML",
+    }
+    return mapping.get(val, val)
 
 
 def _parse_date_any(s: Any) -> Optional[pd.Timestamp]:
@@ -102,17 +130,9 @@ def load_csv(csv_path: str) -> pd.DataFrame:
     df[get("expiry")] = df[get("expiry")].apply(_parse_date_any)
     df[get("date_posted")] = df[get("date_posted")].apply(_parse_date_any)
 
-    # Try to find Unit of Measure column
-    uom_col = None
-    for alias in UOM_ALIASES:
-        if alias in df.columns:
-            uom_col = alias
-            break
-    if uom_col is None:
-        # Create placeholder to be filled via extraction from name
-        df["__UOM__"] = df[CSV_COLUMNS["name"]].apply(_extract_uom_from_name)
-    else:
-        df["__UOM__"] = df[uom_col].astype(str)
+    # Always defer unit resolution to external Jednostki.csv lookup (authoritative).
+    # Ignore any in-file unit columns and heuristics; start with blank units.
+    df["__UOM__"] = ""
 
     return df
 
@@ -122,22 +142,156 @@ def _extract_uom_from_name(name: Any) -> str:
     import re
     s = str(name or "").upper()
     # Common tokens
-    if " KG" in s or re.search(r"\bKG\b", s):
-        return "kg"
+    # Detect KG even when adjacent to digits without a leading space (e.g. 5KG, A'5KG, 0,2KG)
+    if " KG" in s or "KG " in s or "KG" in s or re.search(r"[0-9]+\s*KG", s) or re.search(r"\bKG\b", s):
+        return "KG"
     if re.search(r"\bL\b|\b L\b", s) or " 5L" in s:
-        return "l"
+        return "L"
     if " G " in s or re.search(r"\bG\b", s):
-        return "g"
+        return "G"
     if " ML" in s or re.search(r"\bML\b", s):
-        return "ml"
+        return "ML"
     if " SZT" in s or re.search(r"\bSZT\b", s):
-        return "szt"
+        return "SZT"
     # Fallback generic piece
-    return "szt"
+    return "SZT"
+
+
+def load_uom_lookup(lookup_csv_path: str) -> Dict[str, str]:
+    """Load mapping of item number -> unit from a CSV/Excel like output/Jednostki.csv.
+    Expects columns: 'Nr' and 'Podst. jednostka miary' (case-insensitive, partial match for 'jednostka').
+    Returns dict {Nr: UOM}. If file is missing, tries a few fallback locations relative to the provided path.
+    Gracefully returns {} if nothing is found/parsable.
+    """
+    def _try_read_csv(path: str) -> Optional[pd.DataFrame]:
+        try:
+            return pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            try:
+                return pd.read_csv(path, dtype=str, keep_default_na=False, encoding="cp1250")
+            except Exception:
+                return None
+        except Exception:
+            return None
+
+    def _try_read_excel(path: str) -> Optional[pd.DataFrame]:
+        try:
+            xl = pd.ExcelFile(path, engine="openpyxl")
+            sheet = xl.sheet_names[0]
+            return xl.parse(sheet).astype(str)
+        except Exception:
+            return None
+
+    try:
+        candidates: List[str] = []
+        base = os.path.abspath(os.path.dirname(lookup_csv_path))
+        # Executable directory (frozen) and potential repo root two levels up
+        exec_dir = os.path.dirname(sys.executable)
+        bundle_dir = getattr(sys, '_MEIPASS', None) or exec_dir
+        repo_root_candidate = os.path.abspath(os.path.join(exec_dir, '..', '..'))
+        # Primary: as provided
+        candidates.append(lookup_csv_path)
+        # Fallback: current working dir's output
+        candidates.append(os.path.join(os.getcwd(), 'output', 'Jednostki.csv'))
+        # Fallback: one and two levels up from base (useful when running dist/APApp and file is in project root/output)
+        candidates.append(os.path.abspath(os.path.join(base, '..', 'Jednostki.csv')))
+        candidates.append(os.path.abspath(os.path.join(base, '..', 'output', 'Jednostki.csv')))
+        candidates.append(os.path.abspath(os.path.join(base, '..', '..', 'output', 'Jednostki.csv')))
+        # Repo root output (common when running frozen exe from dist/APApp shortcut)
+        candidates.append(os.path.join(repo_root_candidate, 'output', 'Jednostki.csv'))
+        # Bundled inside PyInstaller (added via --add-data output/Jednostki.csv;output)
+        candidates.append(os.path.join(bundle_dir, 'output', 'Jednostki.csv'))
+        # Also allow 'data/Jednostki.csv' if present (Excel-misnamed)
+        candidates.append(os.path.abspath(os.path.join(base, '..', 'data', 'Jednostki.csv')))
+        candidates.append(os.path.abspath(os.path.join(base, '..', '..', 'data', 'Jednostki.csv')))
+        candidates.append(os.path.join(repo_root_candidate, 'data', 'Jednostki.csv'))
+
+        chosen: Optional[str] = next((p for p in candidates if p and os.path.exists(p)), None)
+        if not chosen:
+            return {}
+
+        # Try CSV first, then Excel if needed
+        df_l = _try_read_csv(chosen)
+        if df_l is None:
+            df_l = _try_read_excel(chosen)
+        if df_l is None or df_l.empty:
+            return {}
+
+        # Find columns
+        nr_col = None
+        uom_col = None
+        for c in df_l.columns:
+            c_str = str(c).strip()
+            if c_str.lower() in {"nr", "nr zapasu"}:
+                nr_col = c
+            if c_str.lower().startswith("podst.") or c_str.lower().startswith("podstawowa") or "jednostka" in c_str.lower():
+                uom_col = c
+        if nr_col is None or uom_col is None:
+            return {}
+        df_l = df_l[[nr_col, uom_col]].copy()
+        df_l.columns = ["Nr", "UOM"]
+        df_l["Nr"] = df_l["Nr"].astype(str).str.strip().str.upper()
+        df_l["UOM"] = df_l["UOM"].map(_normalize_uom)
+        mapping: Dict[str, str] = {}
+        import re
+        for _, r in df_l.iterrows():
+            code = r["Nr"]
+            uom = r["UOM"]
+            if not code:
+                continue
+            mapping[code] = uom
+            # If numeric-only (e.g. 3773) create padded variants: Z + zero + code until length 6 (Z0####)
+            if re.fullmatch(r"\d{4,5}", code):
+                digits = code
+                # length 4 -> Z0 + digits (Z0####)
+                if len(digits) == 4:
+                    alt = f"Z0{digits}"  # Z0 + 4 digits => 6 chars
+                    mapping.setdefault(alt, uom)
+                # length 5 -> Z + digits (Z#####)
+                if len(digits) == 5:
+                    alt = f"Z{digits}"   # Z + 5 digits => 6 chars
+                    mapping.setdefault(alt, uom)
+            # If starts with Z and has 5 digits (Z#####) also add variant without leading zero (Z0####) if pattern matches
+            if re.fullmatch(r"Z\d{5}", code):
+                raw = code[1:]
+                if raw.startswith('0') and len(raw) == 5:
+                    # raw = 0#### => produce Z0#### already same code; also add digits-only without leading zero if 0####
+                    mapping.setdefault(raw, uom)
+                # If code like Z03773 add digits-only variant 3773
+                if raw.startswith('0'):
+                    digits4 = raw[1:]
+                    if len(digits4) == 4:
+                        mapping.setdefault(digits4, uom)
+        return mapping
+    except Exception:
+        return {}
+
+
+def apply_uom_lookup(df: pd.DataFrame, lookup: Dict[str, str]) -> pd.DataFrame:
+    """Override df["__UOM__"] based on item number mapping when available.
+    Does not modify other columns. Returns the same DataFrame (mutates in place).
+    """
+    try:
+        item_col = CSV_COLUMNS["item_no"]
+        if not lookup or item_col not in df.columns or "__UOM__" not in df.columns:
+            return df
+        mapped = df[item_col].astype(str).str.strip().str.upper().map(lookup)
+        # Prefer mapped non-empty values; otherwise keep existing
+        df["__UOM__"] = mapped.where(mapped.notna() & (mapped != ""), df["__UOM__"])
+        return df
+    except Exception:
+        return df
 
 
 def unique_sources(df: pd.DataFrame) -> List[str]:
     col = CSV_COLUMNS["source_no"]
+    vals = sorted({str(x).strip() for x in df[col].tolist() if str(x).strip()})
+    return vals
+
+
+def unique_search_names(df: pd.DataFrame) -> List[str]:
+    """Return unique values from the 'Opis szukany' column."""
+    col = CSV_COLUMNS["search_desc"]
     vals = sorted({str(x).strip() for x in df[col].tolist() if str(x).strip()})
     return vals
 
@@ -164,7 +318,7 @@ class ReportBuilder:
         - Windows fonts (Arial / Segoe UI)
         Falls back to Helvetica if none found (may break diacritics).
         """
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        base_dir = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         static_fonts = os.path.join(base_dir, "static", "fonts")
 
         candidates = [
@@ -314,6 +468,27 @@ class ReportBuilder:
         styles = self._get_styles()
 
         story = []
+        # Optional logo at the very top (from config.logo_path or <app>/logo.png)
+        data_root = (os.path.dirname(sys.executable) if getattr(sys, "_MEIPASS", None) else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        bundle_root = getattr(sys, "_MEIPASS", None) or data_root
+        configured = str(self.config.get("logo_path", "")).strip()
+        candidates = [
+            configured if configured else None,
+            os.path.join(data_root, "logo.png"),    # external beside EXE or in repo root
+            os.path.join(bundle_root, "logo.png"),  # bundled via PyInstaller datas
+        ]
+        logo_path = next((p for p in candidates if p and os.path.exists(p)), None)
+        if logo_path and os.path.exists(logo_path):
+            try:
+                img = Image(logo_path)
+                # Fit within a reasonable header box
+                max_w = 60 * mm
+                max_h = 24 * mm
+                img._restrictSize(max_w, max_h)
+                story.append(img)
+                story.append(Spacer(1, 6))
+            except Exception:
+                pass
         # Header addresses
         for line in self.config.get("company_header", []):
             story.append(Paragraph(line, styles["HeaderSmall"]))
@@ -354,7 +529,12 @@ class ReportBuilder:
                 Paragraph(exp_str, styles["CellCenter"]),
             ])
 
-        col_widths = [12*mm, 78*mm, 20*mm, 22*mm, 36*mm, 42*mm]
+        # Scale column widths to available page width (A4 width minus margins)
+        page_width_pt = A4[0]
+        avail_width_pt = page_width_pt - left_m - right_m
+        weights = [12, 78, 20, 22, 36, 42]
+        total_w = float(sum(weights)) or 1.0
+        col_widths = [avail_width_pt * (w / total_w) for w in weights]
         tbl = Table(data, repeatRows=1, colWidths=col_widths)
         tbl.setStyle(TableStyle([
             ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
@@ -383,3 +563,8 @@ class ReportBuilder:
 def filter_by_sources(df: pd.DataFrame, sources: List[str]) -> pd.DataFrame:
     col = CSV_COLUMNS["source_no"]
     return df[df[col].isin(sources)].copy()
+
+
+def filter_by_search_names(df: pd.DataFrame, names: List[str]) -> pd.DataFrame:
+    col = CSV_COLUMNS["search_desc"]
+    return df[df[col].isin(names)].copy()

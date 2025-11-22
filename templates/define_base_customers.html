@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div style="margin-bottom: 1rem;">
+    <a href="{{ url_for('index') }}" style="text-decoration: none; color: #007bff;">&larr; Powrót</a>
+  </div>
+  
+  <form method="post" class="card">
+    <h2>Definiuj bazowych klientów</h2>
+    <p>Wybierz klientów, którzy mają być widoczni w <b>Krok 2. Wybrani klienci</b>. Jeśli nie wybierzesz żadnego, będą widoczni wszyscy.</p>
+    
+    <div class="toolbar">
+      <input id="filter" type="text" placeholder="Filtruj listę (np. Stacja Paliw)">
+      <div class="actions minor">
+        <button type="button" id="selectAll" class="secondary">Zaznacz wszystkie</button>
+        <button type="button" id="clearAll" class="secondary">Wyczyść</button>
+      </div>
+    </div>
+    
+    <div class="grid" id="customersList">
+      {% for s in sources %}
+        <label class="check item">
+          <input type="checkbox" name="customers" value="{{ s }}" {% if s in base_customers %}checked{% endif %}>
+          <span>{{ source_names.get(s, s) }}</span>
+        </label>
+      {% endfor %}
+    </div>
+    
+    <div class="actions">
+      <button type="submit">Zapisz wybór</button>
+    </div>
+  </form>
+  
+  <script>
+    const filter = document.getElementById('filter');
+    const list = document.getElementById('customersList');
+    const items = Array.from(list.querySelectorAll('.item'));
+    
+    // Function to sort items: checked first, then alphabetically
+    function sortItems() {
+      const itemsArray = Array.from(list.querySelectorAll('.item'));
+      itemsArray.sort((a, b) => {
+        const aChecked = a.querySelector('input[type="checkbox"]').checked;
+        const bChecked = b.querySelector('input[type="checkbox"]').checked;
+        
+        // First, sort by checked status (checked items first)
+        if (aChecked !== bChecked) {
+          return bChecked - aChecked; // true (1) before false (0)
+        }
+        
+        // Then, sort alphabetically by text content
+        const aText = a.textContent.trim().toUpperCase();
+        const bText = b.textContent.trim().toUpperCase();
+        return aText.localeCompare(bText);
+      });
+      
+      // Re-append items in sorted order
+      itemsArray.forEach(item => list.appendChild(item));
+    }
+    
+    filter.addEventListener('input', () => {
+      const q = filter.value.toLowerCase();
+      items.forEach(el => {
+        const text = el.textContent.toLowerCase();
+        el.style.display = text.includes(q) ? '' : 'none';
+      });
+    });
+    
+    document.getElementById('selectAll').addEventListener('click', () => {
+      const visibleCheckboxes = Array.from(list.querySelectorAll('.item'))
+        .filter(item => item.style.display !== 'none')
+        .map(item => item.querySelector('input[type="checkbox"]'));
+      visibleCheckboxes.forEach(cb => cb.checked = true);
+      sortItems();
+    });
+    
+    document.getElementById('clearAll').addEventListener('click', () => {
+      list.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+      sortItems();
+    });
+    
+    // Re-sort when any checkbox is clicked
+    list.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox') {
+        sortItems();
+      }
+    });
+  </script>
+{% endblock %}
