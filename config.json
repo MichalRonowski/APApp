@@ -1,0 +1,12 @@
+{
+  "company_header": [
+    "14-200 Iława, ul. Usługowa 11",
+    "oddział Gdynia: 81-061 Gdynia, ul. Hutnicza 53/E2"
+  ],
+  "title": "ZESTAWIENIE ZBIORCZE ATESTÓW JAKOŚCIOWYCH",
+  "footer_texts": [
+    "Oświadczamy, że w/w produkty zostały wyprodukowane zgodnie z przepisami prawa żywnościowego i mogą być wprowadzone do obrotu. Materiały opakowaniowe użyte do ich zapakowania są dopuszczone do kontaktu z żywnością. Produkty spełniają wymagania określone w specyfikacji jakościowej producenta.",
+    "Uwagi: Dokument sporządzony elektronicznie, nie wymaga podpisu"
+  ],
+  "margins_mm": { "left": 15, "right": 15, "top": 15, "bottom": 18 }
+}

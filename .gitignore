@@ -1,0 +1,57 @@
+# Python bytecode and cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+*.venv
+*.env
+
+# Packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Testing / Coverage / Tools
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.iml
+.history/
+
+# Node
+node_modules/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project artifacts
+output/
+
+# Local data you don’t want in git (uncomment if needed)
+# ex_input.csv

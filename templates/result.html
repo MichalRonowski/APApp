@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="card">
+    <h2>Gotowe pliki ({{ count }})</h2>
+    <p>Wygenerowaliśmy raporty per <b>Nr dokumentu</b>. Kliknij, aby pobrać.</p>
+    <ul class="filelist">
+      {% for f in files %}
+        <li><a href="/download/{{ f }}">{{ f }}</a></li>
+      {% endfor %}
+    </ul>
+    <div class="actions">
+      <a class="secondary" href="/">Wróć</a>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,15 @@
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#f6f7fb;color:#1f2937}
+.container{max-width:900px;margin:40px auto;padding:0 16px}
+header h1{margin:0 0 16px;font-size:22px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin:12px 0 16px}
+.check{display:flex;align-items:center;gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:8px}
+.actions{display:flex;gap:12px}
+button{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer}
+button:hover{background:#1d4ed8}
+.flash{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:10px;border-radius:8px;margin-bottom:12px}
+.toolbar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:8px 0}
+.toolbar input{flex:1;border:1px solid #e5e7eb;border-radius:8px;padding:8px}
+.secondary{background:#fff;color:#111;border:1px solid #e5e7eb}
+.secondary:hover{background:#f3f4f6}
+.filelist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;padding-left:0;list-style:none}

@@ -1,0 +1,5 @@
+Flask>=3.0,<4
+pandas>=2.2,<3
+numpy>=1.26,<3
+reportlab>=4.0,<5
+python-dateutil>=2.8,<3

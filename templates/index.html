@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+  <form method="post" class="card">
+    <h2>Krok 1: Wybierz "Nr źródła"</h2>
+    <p>Na podstawie wybranych źródeł wygenerujemy raporty PDF <b>per Nr dokumentu</b>.</p>
+    <div class="toolbar">
+      <input id="filter" type="text" placeholder="Filtruj listę (np. N3222)">
+      <div class="actions minor">
+        <button type="button" id="selectAll" class="secondary">Zaznacz wszystkie</button>
+        <button type="button" id="clearAll" class="secondary">Wyczyść</button>
+      </div>
+    </div>
+    <div class="grid" id="sourcesList">
+      {% for s in sources %}
+        <label class="check item">
+          <input type="checkbox" name="sources" value="{{ s }}">
+          <span>{{ s }}</span>
+        </label>
+      {% endfor %}
+    </div>
+    <div class="actions">
+      <button type="submit">Generuj raporty (PDF)</button>
+    </div>
+  </form>
+  <script>
+    const filter = document.getElementById('filter');
+    const list = document.getElementById('sourcesList');
+    const items = Array.from(list.querySelectorAll('.item'));
+    filter.addEventListener('input', () => {
+      const q = filter.value.toLowerCase();
+      items.forEach(el => {
+        const text = el.textContent.toLowerCase();
+        el.style.display = text.includes(q) ? '' : 'none';
+      });
+    });
+    document.getElementById('selectAll').addEventListener('click', () => {
+      list.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+    });
+    document.getElementById('clearAll').addEventListener('click', () => {
+      list.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    });
+  </script>
+{% endblock %}
