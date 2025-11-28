@@ -117,14 +117,29 @@ def load_csv(csv_path: str) -> pd.DataFrame:
         if v is None:
             return 0.0
         s = str(v).strip().replace(" ", "")
-        # handle comma thousand separator in currency columns if leaked
+        # handle non-breaking space used as thousand separator
         s = s.replace("\u00a0", "")
+        
+        # Remove quotes if present
+        s = s.strip('"')
+        
         try:
             return float(s)
         except Exception:
-            # Try comma decimal
+            # Detect if comma is thousand separator or decimal separator
+            # If format is like "2,000" or "-2,000" (exactly 3 digits after comma), it's thousands
+            # If format is like "2,5" or "2,50" (1-2 digits after comma), it's decimal
+            if ',' in s:
+                parts = s.replace('-', '').split(',')
+                if len(parts) == 2 and len(parts[1]) == 3:
+                    # Likely thousand separator: remove it
+                    s = s.replace(',', '')
+                else:
+                    # Likely decimal separator: replace with dot
+                    s = s.replace(',', '.')
+            
             try:
-                return float(s.replace(",", "."))
+                return float(s)
             except Exception:
                 return 0.0
 
