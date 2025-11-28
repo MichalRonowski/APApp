@@ -218,14 +218,19 @@ def preview():
         # Convert rows to dict format for JSON/template
         rows_data = []
         for r in rows:
-            exp_str = REPORTER._format_date_pl(r.expiry) if r.expiry else ''
+            # Special handling for z00155: show "nie dotyczy"
+            if r.item_no.lower() == "z00155":
+                exp_str = 'nie dotyczy'
+            else:
+                exp_str = REPORTER._format_date_pl(r.expiry) if r.expiry else ''
             rows_data.append({
                 'lp': r.lp,
                 'name': r.name,
                 'qty': REPORTER._format_qty_pl(r.qty),
                 'uom': r.uom,
                 'lot_no': r.lot_no,
-                'expiry': exp_str
+                'expiry': exp_str,
+                'item_no': r.item_no
             })
         
         documents.append({
@@ -280,7 +285,8 @@ def generate_final():
                     qty=qty,
                     uom=r.get('uom', ''),
                     lot_no=r.get('lot_no', ''),
-                    expiry=expiry
+                    expiry=expiry,
+                    item_no=r.get('item_no', '')
                 ))
             
             # Generate PDF

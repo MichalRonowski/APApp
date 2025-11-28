@@ -143,6 +143,12 @@ def load_csv(csv_path: str) -> pd.DataFrame:
     if doc_col in df.columns:
         mask = df[doc_col].astype(str).str.contains("/KG/", regex=False, na=False)
         df = df[~mask].copy()
+    
+    # Filter out rows where product name (Nazwa) starts with "OP-"
+    name_col = get("name")
+    if name_col in df.columns:
+        mask = df[name_col].astype(str).str.startswith("OP-", na=False)
+        df = df[~mask].copy()
 
     return df
 
@@ -314,6 +320,7 @@ class ReportRow:
     uom: str
     lot_no: str
     expiry: Optional[pd.Timestamp]
+    item_no: str = ""  # Nr zapasu for special handling (e.g., z00155)
 
 
 class ReportBuilder:
@@ -417,6 +424,7 @@ class ReportBuilder:
         exp_col = CSV_COLUMNS["expiry"]
         qty_col = CSV_COLUMNS["qty"]
         doc_type_col = CSV_COLUMNS["doc_type"]
+        item_col = CSV_COLUMNS["item_no"]
 
         # Consider only rows of a single document (df already filtered by doc outside)
         # Prefer explicit document type if present to limit to outbound (Wydanie sprzedaży)
@@ -425,8 +433,8 @@ class ReportBuilder:
             mask = (df_use[doc_type_col].str.contains("Wydanie sprzedaży", na=False)) | (df_use[qty_col] < 0)
             df_use = df_use[mask]
 
-        # Group by Name + Lot + Expiry (+ UOM) and sum absolute quantities within the document
-        group_cols = [name_col, lot_col, exp_col, "__UOM__"]
+        # Group by Name + Lot + Expiry + Item_no (+ UOM) and sum absolute quantities within the document
+        group_cols = [name_col, lot_col, exp_col, item_col, "__UOM__"]
         grouped = (
             df_use.groupby(group_cols, dropna=False)[qty_col]
             .sum()
@@ -445,7 +453,8 @@ class ReportBuilder:
             qty = r.get(qty_col, 0.0)
             qty_pos = abs(float(qty))
             uom = str(r.get("__UOM__", "")).strip()
-            rows.append(ReportRow(lp=lp, name=name, qty=qty_pos, uom=uom, lot_no=lot, expiry=exp))
+            item_no = str(r.get(item_col, "")).strip()
+            rows.append(ReportRow(lp=lp, name=name, qty=qty_pos, uom=uom, lot_no=lot, expiry=exp, item_no=item_no))
             lp += 1
         return rows
 
@@ -536,7 +545,11 @@ class ReportBuilder:
         ]]
         # Add rows
         for r in rows:
-            exp_str = self._format_date_pl(r.expiry)
+            # Special handling for z00155: always show "nie dotyczy" in italic
+            if r.item_no.lower() == "z00155":
+                exp_str = "<i>nie dotyczy</i>"
+            else:
+                exp_str = self._format_date_pl(r.expiry)
             qty_str = self._format_qty_pl(r.qty)
             data.append([
                 Paragraph(str(r.lp), styles["CellCenter"]),
