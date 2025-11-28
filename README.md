@@ -40,11 +40,52 @@ Edytuj `config.json` aby zmienić:
 
 ## Założenia agregacji
 - Raport jest generowany per `Nr dokumentu`.
+- **Dokumenty zawierające "/KG/" w numerze są automatycznie pomijane** (nie są uwzględniane w raportach).
 - Sumujemy w ramach dokumentu tylko wiersze, które mają identyczne: `Nazwa` + `Nr partii` + `Data ważności` (+ `Jednostka miary`).
 - Preferujemy wiersze `Wydanie sprzedaży` (lub ujemne ilości). Ilość podajemy jako wartość bezwzględną.
 - Daty w PDF są w formacie `dd.mm.yyyy`.
-- Kolumna „Jednostka miary”: jeśli nie ma w CSV, staramy się ją rozpoznać heurystycznie z nazwy produktu (np. `kg`, `l`, `szt`).
- - Kolumna „Jednostka miary”: ignorowana przy wczytywaniu. Jednostki NIE są już wykrywane heurystycznie z nazwy. Zawsze pochodzą wyłącznie z zewnętrznego pliku `output/Jednostki.csv`.
+- Kolumna „Jednostka miary": jeśli nie ma w CSV, staramy się ją rozpoznać heurystycznie z nazwy produktu (np. `kg`, `l`, `szt`).
+ - Kolumna „Jednostka miary": ignorowana przy wczytywaniu. Jednostki NIE są już wykrywane heurystycznie z nazwy. Zawsze pochodzą wyłącznie z zewnętrznego pliku `output/Jednostki.csv`.
+
+## Edycja raportów przed wygenerowaniem PDF
+
+Przed wygenerowaniem raportów PDF, aplikacja webowa wyświetla **podgląd tabel** ze wszystkimi danymi, które trafią do raportów.
+
+### Możliwości edycji:
+- **Edycja numeru dokumentu**: Kliknij w pole z numerem dokumentu w nagłówku, aby zmienić numer, który pojawi się w raporcie PDF
+- **Edycja komórek inline**: Kliknij dowolną komórkę (oprócz LP), aby ją edytować
+- **Usuwanie wierszy**: Przycisk "Usuń" przy każdym wierszu (z potwierdzeniem)
+- **Duplikowanie wierszy**: Przycisk "Duplikuj" - kopiuje nazwę produktu i jednostkę miary, reszta pól jest pusta
+- **Dodawanie nowych wierszy**: Przycisk "+ Dodaj nowy wiersz" na dole każdej tabeli
+- **Automatyczna numeracja LP**: Numery porządkowe są aktualizowane automatycznie przy każdej zmianie
+
+### Przepływ pracy:
+1. Wybierz klientów na stronie głównej
+2. Zatwierdź wybór → zostaniesz przekierowany do **strony podglądu**
+3. Przeglądaj i edytuj tabele dla każdego dokumentu
+   - Nazwa klienta (nazwa szukana) wyświetlana jest automatycznie nad numerem dokumentu
+   - Możesz edytować numer dokumentu w polu tekstowym
+4. Kliknij **"Zatwierdź i generuj raporty PDF"** aby wygenerować pliki
+5. Możliwość powrotu do wyboru klientów lub bezpośrednie pobranie wygenerowanych PDF-ów
+
+### Nazewnictwo plików PDF:
+Wygenerowane pliki PDF są automatycznie nazywane w formacie:
+```
+Atest do dostawy [nazwa klienta] [data dokumentu] [nr dokumentu].pdf
+```
+Przykład: `Atest do dostawy DYSTRYBUCJA RAFAŁ KOWALSKI 21.11.2025 WD_25_31932.pdf`
+
+Uwaga: Znaki niedozwolone w nazwach plików (/, \, :, *, ?, ", <, >, |) są automatycznie zastępowane podkreślnikiem (_).
+
+### Informacje w raporcie PDF:
+- **Tytuł raportu** (z config.json)
+- **Nazwa klienta** (nazwa szukana z pliku NazwyKlienci.csv)
+- **Numer dokumentu** (edytowalny w podglądzie)
+- **Data dokumentu**
+- **Tabela z produktami**
+- **Numeracja stron** - w prawym dolnym rogu wyświetlana jest numeracja stron w formacie "Strona X/Y" dla raportów wielostronicowych lub "Strona X" dla jednostronicowych
+
+Uwaga: Wszystkie zmiany są stosowane tylko do aktualnej sesji – oryginalny plik CSV pozostaje niezmieniony.
 
 ### Jedyny źródłowy plik jednostek: `output/Jednostki.csv`
 Jednostki w raportach pochodzą **wyłącznie** z pliku `output/Jednostki.csv` (kolumny: `Nr` oraz kolumna zawierająca słowo `jednostka`, np. `Podst. jednostka miary`).

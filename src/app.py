@@ -18,7 +18,9 @@ try:
         load_uom_lookup,
         apply_uom_lookup,
         ReportBuilder,
+        ReportRow,
         CSV_COLUMNS,
+        _parse_date_any,
     )
 except Exception:  # fallback for running as a script: python src/app.py
     from report import (
@@ -29,7 +31,9 @@ except Exception:  # fallback for running as a script: python src/app.py
         load_uom_lookup,
         apply_uom_lookup,
         ReportBuilder,
+        ReportRow,
         CSV_COLUMNS,
+        _parse_date_any,
     )
 
 def _bundle_root() -> str:
@@ -170,24 +174,8 @@ def index():
         if not selected:
             flash('Wybierz co najmniej jeden "Nr źródła".')
             return redirect(url_for('index'))
-
-        # Generate PDFs per document for selected sources
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        files: List[str] = []
-        # Filter to selected sources first
-        df_sources = filter_by_sources(DF, selected)
-        # Group by document number
-        doc_col = CSV_COLUMNS["doc_no"]
-        for doc_no, df_doc in df_sources.groupby(doc_col):
-            rows = REPORTER.build_rows_for_document(df_doc)
-            _, doc_date = REPORTER.infer_doc_header(df_doc)
-            header = {"document_no": doc_no, "document_date": doc_date}
-            safe_doc = str(doc_no).replace('/', '_')
-            filename = f"raport_{safe_doc}.pdf"
-            out_path = os.path.join(OUTPUT_DIR, filename)
-            REPORTER.generate_pdf(out_path, rows, header)
-            files.append(filename)
-        return render_template('result.html', files=files, count=len(files))
+        # Redirect to preview instead of generating PDFs directly
+        return redirect(url_for('preview', sources=','.join(selected)))
 
     # Filter sources based on base customers (if defined)
     filtered_sources = SOURCES
@@ -196,6 +184,126 @@ def index():
     
     source_names = {s: CUSTOMER_NAMES.get(s, s) for s in filtered_sources}
     return render_template('index.html', sources=filtered_sources, source_names=source_names)
+
+
+@app.route('/preview', methods=['GET'])
+def preview():
+    """Preview all tables before generating PDFs."""
+    sources_param = request.args.get('sources', '')
+    if not sources_param:
+        flash('Brak wybranych źródeł.')
+        return redirect(url_for('index'))
+    
+    selected = [s.strip() for s in sources_param.split(',') if s.strip()]
+    if not selected:
+        flash('Brak wybranych źródeł.')
+        return redirect(url_for('index'))
+    
+    # Generate preview data for all documents
+    df_sources = filter_by_sources(DF, selected)
+    doc_col = CSV_COLUMNS["doc_no"]
+    source_col = CSV_COLUMNS["source_no"]
+    
+    documents = []
+    for doc_no, df_doc in df_sources.groupby(doc_col):
+        rows = REPORTER.build_rows_for_document(df_doc)
+        _, doc_date = REPORTER.infer_doc_header(df_doc)
+        
+        # Get customer name from source number mapping
+        customer_name = ""
+        if source_col in df_doc.columns:
+            source_no = next((str(v).strip() for v in df_doc[source_col].tolist() if str(v).strip()), "")
+            customer_name = CUSTOMER_NAMES.get(source_no, source_no)
+        
+        # Convert rows to dict format for JSON/template
+        rows_data = []
+        for r in rows:
+            exp_str = REPORTER._format_date_pl(r.expiry) if r.expiry else ''
+            rows_data.append({
+                'lp': r.lp,
+                'name': r.name,
+                'qty': REPORTER._format_qty_pl(r.qty),
+                'uom': r.uom,
+                'lot_no': r.lot_no,
+                'expiry': exp_str
+            })
+        
+        documents.append({
+            'doc_no': doc_no,
+            'doc_date': doc_date,
+            'customer_name': customer_name,
+            'rows': rows_data
+        })
+    
+    return render_template('preview.html', documents=documents, sources=sources_param)
+
+
+@app.route('/generate-final', methods=['POST'])
+def generate_final():
+    """Generate PDFs from edited table data."""
+    data = request.get_json()
+    if not data or 'documents' not in data:
+        return {'success': False, 'error': 'Brak danych'}, 400
+    
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    files: List[str] = []
+    
+    try:
+        for doc_data in data['documents']:
+            doc_no = doc_data.get('doc_no', '')
+            doc_date = doc_data.get('doc_date', '')
+            customer_name = doc_data.get('customer_name', '')
+            rows_data = doc_data.get('rows', [])
+            
+            # Convert back to ReportRow objects
+            rows = []
+            for r in rows_data:
+                # Parse quantity back from Polish format
+                qty_str = str(r.get('qty', '0')).replace('\u202f', '').replace(',', '.').strip()
+                try:
+                    qty = float(qty_str) if qty_str else 0.0
+                except:
+                    qty = 0.0
+                
+                # Parse date
+                exp_str = r.get('expiry', '').strip()
+                expiry = None
+                if exp_str:
+                    try:
+                        expiry = _parse_date_any(exp_str)
+                    except:
+                        pass
+                
+                rows.append(ReportRow(
+                    lp=r.get('lp', 0),
+                    name=r.get('name', ''),
+                    qty=qty,
+                    uom=r.get('uom', ''),
+                    lot_no=r.get('lot_no', ''),
+                    expiry=expiry
+                ))
+            
+            # Generate PDF
+            header = {
+                "document_no": doc_no, 
+                "document_date": doc_date,
+                "customer_name": customer_name
+            }
+            
+            # Create filename: "Atest do dostawy [nazwa klienta] [data dokumentu] [nr dokumentu].pdf"
+            # Sanitize customer name and doc_no for filename
+            safe_customer = customer_name.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
+            safe_doc = doc_no.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
+            safe_date = doc_date.replace('/', '_').replace('\\', '_').replace(':', '_')
+            
+            filename = f"Atest do dostawy {safe_customer} {safe_date} {safe_doc}.pdf"
+            out_path = os.path.join(OUTPUT_DIR, filename)
+            REPORTER.generate_pdf(out_path, rows, header)
+            files.append(filename)
+        
+        return {'success': True, 'files': files, 'count': len(files)}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}, 500
 
 
 @app.route('/define-base-customers', methods=['GET', 'POST'])
@@ -265,6 +373,18 @@ def upload():
         except Exception:
             pass
     return redirect(url_for('index'))
+
+
+@app.route('/result', methods=['GET', 'POST'])
+def show_results():
+    """Display result page with generated files."""
+    if request.method == 'POST':
+        files = request.form.getlist('files')
+        count = request.form.get('count', len(files))
+    else:
+        files = request.args.getlist('files')
+        count = request.args.get('count', len(files))
+    return render_template('result.html', files=files, count=count)
 
 
 @app.route('/download/<path:filename>')

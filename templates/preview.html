@@ -1,0 +1,523 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  .preview-container {
+    max-width: 100%;
+    margin: 0 auto;
+  }
+  
+  .document-section {
+    margin-bottom: 3rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1.5rem;
+    background: white;
+  }
+  
+  .document-header {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #007bff;
+  }
+  
+  .document-header h3 {
+    margin: 0 0 0.5rem 0;
+    color: #007bff;
+  }
+  
+  .document-info {
+    color: #666;
+    font-size: 0.95em;
+  }
+  
+  .editable-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    font-size: 0.9em;
+  }
+  
+  .editable-table th {
+    background: #f8f9fa;
+    padding: 0.75rem 0.5rem;
+    text-align: center;
+    font-weight: bold;
+    border: 1px solid #dee2e6;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  
+  .editable-table td {
+    padding: 0.5rem;
+    border: 1px solid #dee2e6;
+    vertical-align: middle;
+  }
+  
+  .editable-table tr:hover {
+    background-color: #f8f9fa;
+  }
+  
+  .editable-table td[contenteditable="true"] {
+    cursor: text;
+    min-height: 1.5rem;
+  }
+  
+  .editable-table td[contenteditable="true"]:focus {
+    outline: 2px solid #007bff;
+    outline-offset: -2px;
+    background-color: #fff;
+  }
+  
+  .editable-table .col-lp {
+    width: 5%;
+    text-align: center;
+    background-color: #f1f3f5;
+  }
+  
+  .editable-table .col-name {
+    width: 28%;
+  }
+  
+  .editable-table .col-qty {
+    width: 10%;
+    text-align: right;
+  }
+  
+  .editable-table .col-uom {
+    width: 10%;
+    text-align: center;
+  }
+  
+  .editable-table .col-lot {
+    width: 15%;
+    text-align: center;
+  }
+  
+  .editable-table .col-expiry {
+    width: 17%;
+    text-align: center;
+  }
+  
+  .editable-table .col-actions {
+    width: 15%;
+    text-align: center;
+  }
+  
+  .action-btn {
+    padding: 0.25rem 0.5rem;
+    margin: 0 0.15rem;
+    font-size: 0.85em;
+    border: 1px solid;
+    border-radius: 4px;
+    cursor: pointer;
+    background: white;
+    transition: all 0.2s;
+  }
+  
+  .btn-duplicate {
+    color: #007bff;
+    border-color: #007bff;
+  }
+  
+  .btn-duplicate:hover {
+    background: #007bff;
+    color: white;
+  }
+  
+  .btn-delete {
+    color: #dc3545;
+    border-color: #dc3545;
+  }
+  
+  .btn-delete:hover {
+    background: #dc3545;
+    color: white;
+  }
+  
+  .btn-add-row {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  .btn-add-row:hover {
+    background: #218838;
+  }
+  
+  .bottom-actions {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #dee2e6;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .btn-primary {
+    padding: 0.75rem 2rem;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: bold;
+  }
+  
+  .btn-primary:hover {
+    background: #0056b3;
+  }
+  
+  .btn-secondary {
+    padding: 0.75rem 2rem;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.1em;
+    text-decoration: none;
+    display: inline-block;
+  }
+  
+  .btn-secondary:hover {
+    background: #5a6268;
+  }
+  
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .modal-content {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    max-width: 500px;
+    text-align: center;
+  }
+  
+  .modal-buttons {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+  }
+  
+  .modal-btn {
+    padding: 0.5rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  .modal-btn-confirm {
+    background: #dc3545;
+    color: white;
+  }
+  
+  .modal-btn-cancel {
+    background: #6c757d;
+    color: white;
+  }
+  
+  .loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .loading-content {
+    background: white;
+    padding: 2rem 3rem;
+    border-radius: 8px;
+    text-align: center;
+  }
+  
+  .spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+</style>
+
+<div class="preview-container">
+  <h2>Podgląd i edycja raportów</h2>
+  <p style="color: #666; margin-bottom: 2rem;">
+    Możesz edytować komórki klikając na nie, usuwać wiersze, duplikować je lub dodawać nowe. 
+    Po zakończeniu edycji zatwierdź i wygeneruj raporty PDF.
+  </p>
+  
+  {% for doc in documents %}
+  <div class="document-section" data-doc-no="{{ doc.doc_no }}" data-doc-date="{{ doc.doc_date }}" data-customer-name="{{ doc.customer_name }}">
+    <div class="document-header">
+      <h3>Dokument: 
+        <input type="text" class="doc-no-input" value="{{ doc.doc_no }}" 
+               style="border: 1px solid #ddd; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 1em; font-weight: bold; min-width: 200px;">
+      </h3>
+      <div class="document-info">Data: {{ doc.doc_date }}</div>
+      <div class="document-info">Klient: {{ doc.customer_name }}</div>
+    </div>
+    
+    <table class="editable-table">
+      <thead>
+        <tr>
+          <th class="col-lp">LP.</th>
+          <th class="col-name">NAZWA PRODUKTU</th>
+          <th class="col-qty">ILOŚĆ</th>
+          <th class="col-uom">JEDN. MIARY</th>
+          <th class="col-lot">NR PARTII LOT</th>
+          <th class="col-expiry">DATA MINIMALNEJ TRWAŁOŚCI LUB TERMIN PRZYDATNOŚCI DO SPOŻYCIA</th>
+          <th class="col-actions">AKCJE</th>
+        </tr>
+      </thead>
+      <tbody class="table-body">
+        {% for row in doc.rows %}
+        <tr data-row-id="{{ loop.index }}">
+          <td class="col-lp">{{ row.lp }}</td>
+          <td class="col-name" contenteditable="true">{{ row.name }}</td>
+          <td class="col-qty" contenteditable="true">{{ row.qty }}</td>
+          <td class="col-uom" contenteditable="true">{{ row.uom }}</td>
+          <td class="col-lot" contenteditable="true">{{ row.lot_no }}</td>
+          <td class="col-expiry" contenteditable="true">{{ row.expiry }}</td>
+          <td class="col-actions">
+            <button class="action-btn btn-duplicate" onclick="duplicateRow(this)">Duplikuj</button>
+            <button class="action-btn btn-delete" onclick="confirmDelete(this)">Usuń</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    
+    <button class="btn-add-row" onclick="addNewRow(this)">+ Dodaj nowy wiersz</button>
+  </div>
+  {% endfor %}
+  
+  <div class="bottom-actions">
+    <a href="{{ url_for('index') }}" class="btn-secondary">Powrót do wyboru klientów</a>
+    <button class="btn-primary" onclick="generateReports()">Zatwierdź i generuj raporty PDF</button>
+  </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="deleteModal" class="modal">
+  <div class="modal-content">
+    <h3>Potwierdzenie usunięcia</h3>
+    <p>Czy na pewno chcesz usunąć ten wiersz?</p>
+    <div class="modal-buttons">
+      <button class="modal-btn modal-btn-confirm" onclick="deleteConfirmed()">Usuń</button>
+      <button class="modal-btn modal-btn-cancel" onclick="closeModal()">Anuluj</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="loading-content">
+    <div class="spinner"></div>
+    <h3>Generowanie raportów PDF...</h3>
+    <p>Proszę czekać</p>
+  </div>
+</div>
+
+<script>
+let rowToDelete = null;
+
+function confirmDelete(btn) {
+  rowToDelete = btn.closest('tr');
+  document.getElementById('deleteModal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('deleteModal').style.display = 'none';
+  rowToDelete = null;
+}
+
+function deleteConfirmed() {
+  if (rowToDelete) {
+    const tbody = rowToDelete.closest('tbody');
+    rowToDelete.remove();
+    updateRowNumbers(tbody);
+  }
+  closeModal();
+}
+
+function duplicateRow(btn) {
+  const row = btn.closest('tr');
+  const tbody = row.closest('tbody');
+  const newRow = row.cloneNode(true);
+  
+  // Clear all cells except name and uom
+  const cells = newRow.querySelectorAll('td[contenteditable="true"]');
+  cells.forEach((cell, idx) => {
+    // Keep name (idx 0) and uom (idx 2), clear others
+    if (!cell.classList.contains('col-name') && !cell.classList.contains('col-uom')) {
+      cell.textContent = '';
+    }
+  });
+  
+  // Insert after current row
+  row.insertAdjacentElement('afterend', newRow);
+  
+  // Update all LP numbers
+  updateRowNumbers(tbody);
+}
+
+function addNewRow(btn) {
+  const section = btn.closest('.document-section');
+  const tbody = section.querySelector('.table-body');
+  
+  // Create new row
+  const newRow = document.createElement('tr');
+  newRow.innerHTML = `
+    <td class="col-lp"></td>
+    <td class="col-name" contenteditable="true"></td>
+    <td class="col-qty" contenteditable="true"></td>
+    <td class="col-uom" contenteditable="true"></td>
+    <td class="col-lot" contenteditable="true"></td>
+    <td class="col-expiry" contenteditable="true"></td>
+    <td class="col-actions">
+      <button class="action-btn btn-duplicate" onclick="duplicateRow(this)">Duplikuj</button>
+      <button class="action-btn btn-delete" onclick="confirmDelete(this)">Usuń</button>
+    </td>
+  `;
+  
+  tbody.appendChild(newRow);
+  updateRowNumbers(tbody);
+}
+
+function updateRowNumbers(tbody) {
+  const rows = tbody.querySelectorAll('tr');
+  rows.forEach((row, index) => {
+    const lpCell = row.querySelector('.col-lp');
+    if (lpCell) {
+      lpCell.textContent = index + 1;
+    }
+  });
+}
+
+function collectTableData() {
+  const documents = [];
+  const sections = document.querySelectorAll('.document-section');
+  
+  sections.forEach(section => {
+    const docNoInput = section.querySelector('.doc-no-input');
+    const docNo = docNoInput ? docNoInput.value.trim() : section.getAttribute('data-doc-no');
+    const docDate = section.getAttribute('data-doc-date');
+    const customerName = section.getAttribute('data-customer-name');
+    const rows = [];
+    
+    const tableRows = section.querySelectorAll('.table-body tr');
+    tableRows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      rows.push({
+        lp: parseInt(cells[0].textContent.trim()) || 0,
+        name: cells[1].textContent.trim(),
+        qty: cells[2].textContent.trim(),
+        uom: cells[3].textContent.trim(),
+        lot_no: cells[4].textContent.trim(),
+        expiry: cells[5].textContent.trim()
+      });
+    });
+    
+    documents.push({
+      doc_no: docNo,
+      doc_date: docDate,
+      customer_name: customerName,
+      rows: rows
+    });
+  });
+  
+  return { documents: documents };
+}
+
+function generateReports() {
+  const data = collectTableData();
+  
+  // Show loading overlay
+  document.getElementById('loadingOverlay').style.display = 'flex';
+  
+  fetch('{{ url_for("generate_final") }}', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  })
+  .then(response => response.json())
+  .then(result => {
+    if (result.success) {
+      // Create a form and submit it to pass files as POST data
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '{{ url_for("show_results") }}';
+      
+      result.files.forEach(f => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'files';
+        input.value = f;
+        form.appendChild(input);
+      });
+      
+      const countInput = document.createElement('input');
+      countInput.type = 'hidden';
+      countInput.name = 'count';
+      countInput.value = result.count;
+      form.appendChild(countInput);
+      
+      document.body.appendChild(form);
+      form.submit();
+    } else {
+      alert('Błąd generowania raportów: ' + (result.error || 'Nieznany błąd'));
+      document.getElementById('loadingOverlay').style.display = 'none';
+    }
+  })
+  .catch(error => {
+    alert('Błąd: ' + error);
+    document.getElementById('loadingOverlay').style.display = 'none';
+  });
+}
+
+// Close modal on outside click
+window.onclick = function(event) {
+  const modal = document.getElementById('deleteModal');
+  if (event.target === modal) {
+    closeModal();
+  }
+}
+</script>
+
+{% endblock %}

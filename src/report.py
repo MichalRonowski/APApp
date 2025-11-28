@@ -12,9 +12,13 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, BaseDocTemplate, PageTemplate, Frame
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 
 
 CSV_COLUMNS = {
@@ -133,6 +137,12 @@ def load_csv(csv_path: str) -> pd.DataFrame:
     # Always defer unit resolution to external Jednostki.csv lookup (authoritative).
     # Ignore any in-file unit columns and heuristics; start with blank units.
     df["__UOM__"] = ""
+
+    # Filter out rows where document number contains "/KG/" (case-sensitive)
+    doc_col = get("doc_no")
+    if doc_col in df.columns:
+        mask = df[doc_col].astype(str).str.contains("/KG/", regex=False, na=False)
+        df = df[~mask].copy()
 
     return df
 
@@ -464,7 +474,10 @@ class ReportBuilder:
         right_m = float(mcfg.get("right", 15)) * mm
         top_m = float(mcfg.get("top", 15)) * mm
         bottom_m = float(mcfg.get("bottom", 18)) * mm
+        
+        # Create document
         doc = SimpleDocTemplate(output_path, pagesize=A4, leftMargin=left_m, rightMargin=right_m, topMargin=top_m, bottomMargin=bottom_m)
+        
         styles = self._get_styles()
 
         story = []
@@ -498,6 +511,11 @@ class ReportBuilder:
         title = self.config.get("title", "Raport")
         story.append(Paragraph(f"<b>{title}</b>", styles["Title"]))
 
+        # Customer name (if provided)
+        customer_name = header.get("customer_name", "")
+        if customer_name:
+            story.append(Paragraph(f"dla {customer_name}", styles["Normal"]))
+        
         # Document info lines
         doc_no = header.get("document_no", "")
         doc_date = header.get("document_date", "")
@@ -557,7 +575,42 @@ class ReportBuilder:
             story.append(Paragraph(ft, styles["Footer"]))
             story.append(Spacer(1, 6))
 
-        doc.build(story)
+        # Build PDF with page numbers using custom canvas
+        from reportlab.pdfgen import canvas as pdfgen_canvas
+        
+        class NumberedCanvas(pdfgen_canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                pdfgen_canvas.Canvas.__init__(self, *args, **kwargs)
+                self._saved_page_states = []
+                
+            def showPage(self):
+                self._saved_page_states.append(dict(self.__dict__))
+                self._startPage()
+                
+            def save(self):
+                """Add page numbers to all pages"""
+                num_pages = len(self._saved_page_states)
+                for state in self._saved_page_states:
+                    self.__dict__.update(state)
+                    self.draw_page_number(num_pages)
+                    pdfgen_canvas.Canvas.showPage(self)
+                pdfgen_canvas.Canvas.save(self)
+                
+            def draw_page_number(self, page_count):
+                page_num = self._pageNumber
+                if page_count > 1:
+                    text = f"Strona {page_num}/{page_count}"
+                else:
+                    text = f"Strona {page_num}"
+                self.saveState()
+                self.setFont(font_regular, 9)
+                self.drawRightString(A4[0] - right_m, bottom_m - 10, text)
+                self.restoreState()
+        
+        # Need to pass font to canvas
+        font_regular = self.font_regular
+        
+        doc.build(story, canvasmaker=NumberedCanvas)
 
 
 def filter_by_sources(df: pd.DataFrame, sources: List[str]) -> pd.DataFrame:
