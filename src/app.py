@@ -37,39 +37,60 @@ except Exception:  # fallback for running as a script: python src/app.py
     )
 
 def _bundle_root() -> str:
+    """Get the directory where bundled resources are stored (templates, static)."""
     base = getattr(sys, '_MEIPASS', None)
     if base:
         return base
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def _app_data_root() -> str:
-    """Get the application's data root directory."""
+def _user_data_dir() -> str:
+    """Get the user-specific data directory (APPDATA/APApp)."""
     if getattr(sys, 'frozen', False):
-        # Running in a bundle
-        return sys._MEIPASS
+        # Running as executable - use APPDATA
+        return os.path.join(os.getenv('APPDATA', ''), 'APApp')
     else:
-        # Running in a normal Python environment
-        # This should be the project root, so we go up one level from src
+        # Running in dev - use project root
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+def _shared_data_dir() -> str:
+    """Get the shared data directory for all users (ProgramData/APApp)."""
+    if getattr(sys, 'frozen', False):
+        # Running as executable - use ProgramData
+        return os.path.join(os.getenv('PROGRAMDATA', 'C:\\ProgramData'), 'APApp')
+    else:
+        # Running in dev - use project root
         return os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 def _resource_path(*parts: str) -> str:
+    """Get path to bundled resources (templates, static)."""
     return os.path.join(_bundle_root(), *parts)
 
-BASE_DIR = _app_data_root()
-INPUT_CSV = os.path.join(BASE_DIR, 'ex_input.csv')
-CONFIG_JSON = os.path.join(BASE_DIR, 'config.json')
-BASE_CUSTOMERS_JSON = os.path.join(BASE_DIR, 'base_customers.json')
-OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
+# User-specific directories
+USER_DATA_DIR = _user_data_dir()
+CONFIG_JSON = os.path.join(USER_DATA_DIR, 'config.json')
+BASE_CUSTOMERS_JSON = os.path.join(USER_DATA_DIR, 'base_customers.json')
+OUTPUT_DIR = os.path.join(USER_DATA_DIR, 'output')
+INPUT_CSV = os.path.join(USER_DATA_DIR, 'current_input.csv')  # User uploads here
+
+# Shared directories (all users)
+SHARED_DATA_DIR = _shared_data_dir()
+UOM_CSV = os.path.join(SHARED_DATA_DIR, 'Jednostki.csv')
+CUSTOMER_NAMES_CSV = os.path.join(SHARED_DATA_DIR, 'NazwyKlienci.csv')
+
+# Bundled resources
 TEMPLATES_DIR = _resource_path('templates')
 STATIC_DIR = _resource_path('static')
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR, static_url_path='/static')
 app.secret_key = 'dev-secret-key'  # replace via env for production
 
-# Ensure essential data files exist next to the EXE; if missing, seed from bundled copies
+# Ensure user directories exist and seed config if needed
 def _ensure_data_files() -> None:
-    os.makedirs(BASE_DIR, exist_ok=True)
-    # Seed config.json
+    # Create user data directories
+    os.makedirs(USER_DATA_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    # Seed config.json if missing
     if not os.path.exists(CONFIG_JSON):
         src = _resource_path('config.json')
         if os.path.exists(src):
@@ -78,40 +99,25 @@ def _ensure_data_files() -> None:
                 shutil.copyfile(src, CONFIG_JSON)
             except Exception:
                 pass
-    # Seed ex_input.csv
-    if not os.path.exists(INPUT_CSV):
-        src = _resource_path('ex_input.csv')
-        if os.path.exists(src):
-            try:
-                import shutil
-                shutil.copyfile(src, INPUT_CSV)
-            except Exception:
-                pass
-    # Optional: seed logo.png if present in bundle and missing externally
-    logo_dst = os.path.join(BASE_DIR, 'logo.png')
-    if not os.path.exists(logo_dst):
-        src = _resource_path('logo.png')
-        if os.path.exists(src):
-            try:
-                import shutil
-                shutil.copyfile(src, logo_dst)
-            except Exception:
-                pass
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    # Create shared data directory (installer will populate with Jednostki.csv, NazwyKlienci.csv)
+    os.makedirs(SHARED_DATA_DIR, exist_ok=True)
 
 
 def _load_customer_names() -> Dict[str, str]:
-    """Loads customer name mapping from NazwyKlienci.csv"""
-    # Path is now relative to the app data root
-    path = os.path.join(_app_data_root(), 'NazwyKlienci.csv')
-    if not os.path.exists(path):
-        # Fallback for dev environment where it might be in output
-        path = os.path.join(_app_data_root(), 'output', 'NazwyKlienci.csv')
-        if not os.path.exists(path):
+    """Loads customer name mapping from shared NazwyKlienci.csv"""
+    if not os.path.exists(CUSTOMER_NAMES_CSV):
+        # Fallback for dev environment
+        fallback = os.path.join(_user_data_dir(), 'output', 'NazwyKlienci.csv')
+        if os.path.exists(fallback):
+            path = fallback
+        else:
             return {}
+    else:
+        path = CUSTOMER_NAMES_CSV
+    
     try:
         df = pd.read_csv(path, dtype=str, keep_default_na=False, encoding='utf-8-sig')
-        # Check for actual column names in the CSV file
         if 'Nr' in df.columns and 'Nazwa szukana' in df.columns:
             return dict(zip(df['Nr'], df['Nazwa szukana']))
         else:
@@ -145,11 +151,18 @@ _ensure_data_files()
 
 # Load data at startup
 CONFIG: Dict[str, Any] = load_config(CONFIG_JSON)
-DF: pd.DataFrame = load_csv(INPUT_CSV)
-# Apply UOM lookup from output/Jednostki.csv if present
-_uom_lookup_path = os.path.join(OUTPUT_DIR, 'Jednostki.csv')
-DF = apply_uom_lookup(DF, load_uom_lookup(_uom_lookup_path))
-SOURCES: List[str] = unique_sources(DF)
+
+# Load input CSV if exists, otherwise create empty DataFrame
+if os.path.exists(INPUT_CSV):
+    DF: pd.DataFrame = load_csv(INPUT_CSV)
+    # Apply UOM lookup from shared Jednostki.csv
+    DF = apply_uom_lookup(DF, load_uom_lookup(UOM_CSV))
+    SOURCES: List[str] = unique_sources(DF)
+else:
+    # No data loaded yet - user needs to upload first
+    DF = pd.DataFrame()
+    SOURCES = []
+
 CUSTOMER_NAMES: Dict[str, str] = _load_customer_names()
 BASE_CUSTOMERS: List[str] = _load_base_customers()
 REPORTER = ReportBuilder(CONFIG)
@@ -158,10 +171,15 @@ REPORTER = ReportBuilder(CONFIG)
 def _reload_data() -> None:
     global CONFIG, DF, SOURCES, REPORTER, CUSTOMER_NAMES, BASE_CUSTOMERS
     CONFIG = load_config(CONFIG_JSON)
-    DF = load_csv(INPUT_CSV)
-    _uom_lookup_path = os.path.join(OUTPUT_DIR, 'Jednostki.csv')
-    DF = apply_uom_lookup(DF, load_uom_lookup(_uom_lookup_path))
-    SOURCES = unique_sources(DF)
+    
+    if os.path.exists(INPUT_CSV):
+        DF = load_csv(INPUT_CSV)
+        DF = apply_uom_lookup(DF, load_uom_lookup(UOM_CSV))
+        SOURCES = unique_sources(DF)
+    else:
+        DF = pd.DataFrame()
+        SOURCES = []
+    
     CUSTOMER_NAMES = _load_customer_names()
     BASE_CUSTOMERS = _load_base_customers()
     REPORTER = ReportBuilder(CONFIG)

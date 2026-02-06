@@ -101,12 +101,20 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
 
 def load_csv(csv_path: str) -> pd.DataFrame:
-    df = pd.read_csv(
-        csv_path,
-        encoding="utf-8-sig",
-        dtype=str,  # read as str, we'll coerce specific fields
-        keep_default_na=False,
-    )
+    try:
+        df = pd.read_csv(
+            csv_path,
+            encoding="utf-8-sig",
+            dtype=str,  # read as str, we'll coerce specific fields
+            keep_default_na=False,
+        )
+    except pd.errors.EmptyDataError:
+        # File is empty or has no columns - return empty DataFrame
+        return pd.DataFrame()
+    
+    # If DataFrame is empty (no rows), return it as-is
+    if df.empty:
+        return df
 
     # Normalize columns we need
     def get(col_key: str) -> str:
@@ -315,7 +323,11 @@ def apply_uom_lookup(df: pd.DataFrame, lookup: Dict[str, str]) -> pd.DataFrame:
 
 
 def unique_sources(df: pd.DataFrame) -> List[str]:
+    if df.empty:
+        return []
     col = CSV_COLUMNS["source_no"]
+    if col not in df.columns:
+        return []
     vals = sorted({str(x).strip() for x in df[col].tolist() if str(x).strip()})
     return vals
 
